@@ -42,6 +42,11 @@ interface RoomState {
   isConnected: boolean;
 }
 
+interface StartState {
+  pos: number;
+  playing: boolean;
+}
+
 // extractYouTubeID pulls the video ID from a full YouTube URL or returns
 // the string as-is if it's already just an ID (11 characters).
 function extractYouTubeID(url: string): string {
@@ -79,6 +84,19 @@ export function useRoom(
   // re-emit another event back to the room. This prevents the ping-pong loop.
   const ignoreNextStateChange = useRef(false);
   const playerReady = useRef(false);
+  // videoUrlRef tracks the video URL the *player* currently reflects. This
+  // must be a ref, not React state read inside the WS onmessage closure —
+  // that closure is captured once when the effect mounts (deps: [roomCode])
+  // and would otherwise always compare against the stale initial value,
+  // making every subsequent play/pause/seek event look like a "new video"
+  // and destroy+recreate the player on every single sync message.
+  const videoUrlRef = useRef("");
+  // Queues a pending player creation if the YouTube IFrame API script
+  // hasn't finished loading yet by the time we need it.
+  const pendingInit = useRef<{
+    videoId: string;
+    startState?: StartState;
+  } | null>(null);
 
   // send is stable across renders — it sends a ClientEvent over the WS.
   const send = useCallback((ev: ClientEvent) => {
@@ -88,15 +106,15 @@ export function useRoom(
   }, []);
 
   // initPlayer creates a YouTube IFrame player inside the #yt-player div.
-  // Called when we first get a video URL (either from the initial room state
-  // or from a set_video event).
+  // startState (if given) is applied once the new player reports ready —
+  // seeking/playing a player that doesn't exist yet is a no-op, so we can't
+  // just call applySync() right after construction.
   const initPlayer = useCallback(
-    (videoId: string) => {
-      if (!window.YT?.Player) return;
-
+    (videoId: string, startState?: StartState) => {
       if (player.current) {
         player.current.destroy();
       }
+      playerReady.current = false;
 
       player.current = new window.YT.Player("yt-player", {
         videoId,
@@ -104,6 +122,15 @@ export function useRoom(
         events: {
           onReady: () => {
             playerReady.current = true;
+            if (startState) {
+              ignoreNextStateChange.current = true;
+              player.current?.seekTo(startState.pos, true);
+              if (startState.playing) {
+                player.current?.playVideo();
+              } else {
+                player.current?.pauseVideo();
+              }
+            }
           },
           onStateChange: (event) => {
             if (ignoreNextStateChange.current) {
@@ -123,6 +150,28 @@ export function useRoom(
       });
     },
     [send],
+  );
+
+  // ensurePlayer creates the player now if the YouTube API is ready, or
+  // queues the request to run once it finishes loading.
+  const ensurePlayer = useCallback(
+    (videoId: string, startState?: StartState) => {
+      if (window.YT?.Player) {
+        initPlayer(videoId, startState);
+      } else {
+        pendingInit.current = { videoId, startState };
+        window.onYouTubeIframeAPIReady = () => {
+          if (pendingInit.current) {
+            initPlayer(
+              pendingInit.current.videoId,
+              pendingInit.current.startState,
+            );
+            pendingInit.current = null;
+          }
+        };
+      }
+    },
+    [initPlayer],
   );
 
   // applySync applies a server sync event to the local player, computing
@@ -149,6 +198,9 @@ export function useRoom(
 
   // WebSocket lifecycle
   useEffect(() => {
+    videoUrlRef.current = "";
+    playerReady.current = false;
+
     const wsBase = import.meta.env.VITE_WS_URL || "ws://localhost:8080";
     const nameParam = encodeURIComponent(displayName);
     const tokenParam = token ? `&token=${token}` : "";
@@ -186,18 +238,30 @@ export function useRoom(
             isPlaying: ev.is_playing,
           }));
 
-          // Skip re-applying player controls for events we ourselves
-          // originated — the player already reflects our intent, and
-          // re-applying here would risk a ping-pong loop. We still needed
-          // the setState above so our own UI (e.g. showing the player once
-          // a video is set) reflects the change.
-          if (isSelfEcho) break;
+          const videoChanged =
+            !!ev.video_url && ev.video_url !== videoUrlRef.current;
+          if (videoChanged) videoUrlRef.current = ev.video_url;
 
-          if (ev.video_url && ev.video_url !== state.videoUrl) {
-            const vidId = extractYouTubeID(ev.video_url);
-            initPlayer(vidId);
+          if (videoChanged) {
+            // (Re)create the player for every client, including whoever set
+            // the video — this is the one and only place the player gets
+            // created, so there's no race between a locally-fired init and
+            // the server echo arriving with the authoritative state.
+            let pos = ev.position_seconds;
+            if (ev.is_playing) {
+              pos +=
+                (Date.now() - new Date(ev.last_updated_at).getTime()) / 1000;
+            }
+            ensurePlayer(extractYouTubeID(ev.video_url), {
+              pos,
+              playing: ev.is_playing,
+            });
+            break;
           }
-          applySync(ev);
+
+          // Same video — just a play/pause/seek update. Skip re-applying
+          // our own action (avoids a feedback loop); apply everyone else's.
+          if (!isSelfEcho) applySync(ev);
           break;
         }
 
@@ -223,38 +287,20 @@ export function useRoom(
       }
     };
 
-    // Initialize the YouTube player once the API is ready, if we already
-    // have a video URL from the initial room state.
-    if (initialVideoUrl) {
-      const initWhenReady = () => initPlayer(extractYouTubeID(initialVideoUrl));
-      if (window.YT?.Player) {
-        initWhenReady();
-      } else {
-        window.onYouTubeIframeAPIReady = initWhenReady;
-      }
-    } else {
-      window.onYouTubeIframeAPIReady = () => {
-        /* player created on first set_video event */
-      };
-    }
-
     return () => {
       socket.close();
       player.current?.destroy();
+      player.current = null;
     };
   }, [roomCode]); // only re-run if room code changes — not on every render
 
   const sendSetVideo = useCallback(
     (url: string) => {
+      // Just send it — the player is (re)created uniformly for every client,
+      // including us, when the server echoes the resulting sync event back.
       send({ type: "set_video", video_url: url });
-      const vidId = extractYouTubeID(url);
-      if (window.YT?.Player) {
-        initPlayer(vidId);
-      } else {
-        window.onYouTubeIframeAPIReady = () => initPlayer(vidId);
-      }
     },
-    [send, initPlayer],
+    [send],
   );
 
   const sendChat = useCallback(

@@ -372,34 +372,38 @@ function RoomScreen({
       >
         {/* Video panel */}
         <div style={{ display: "flex", flexDirection: "column" }}>
-          {/* YouTube IFrame Player — the DOM element must always exist so the
-              YT API can attach to it. Display:none when no video is set. */}
+          {/* YouTube IFrame Player — this outer box is always visible and
+              sized (never display:none), so the YT API always attaches to a
+              properly-dimensioned element. The "no video yet" message is an
+              overlay on top rather than a sibling that swaps places with it. */}
           <div
-            id="yt-player"
             style={{
+              position: "relative",
               width: "100%",
               aspectRatio: "16/9",
               background: "#000",
               borderRadius: 8,
-              display: state.videoUrl ? "block" : "none",
+              overflow: "hidden",
             }}
-          />
-          {!state.videoUrl && (
-            <div
-              style={{
-                ...s.card,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flex: 1,
-              }}
-            >
-              <div style={{ textAlign: "center", color: "#6b7280" }}>
-                <div style={{ fontSize: 32, marginBottom: 8 }}>▶</div>
-                <div>Paste a YouTube URL below to start watching</div>
+          >
+            <div id="yt-player" style={{ width: "100%", height: "100%" }} />
+            {!state.videoUrl && (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <div style={{ textAlign: "center", color: "#9ca3af" }}>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>▶</div>
+                  <div>Paste a YouTube URL below to start watching</div>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <input
               style={{ ...s.input, marginBottom: 0, flex: 1 }}
@@ -482,6 +486,32 @@ export default function App() {
     messages: ChatMessage[];
   } | null>(null);
 
+  // On page load, if we were in a room before refresh, silently rejoin it
+  // (re-fetch its current state) instead of dumping the user back to the
+  // lobby/auth screen. This runs once on mount.
+  useEffect(() => {
+    const savedCode = localStorage.getItem("activeRoomCode");
+    if (!savedCode) return;
+    const savedGuestName = localStorage.getItem("guestName");
+
+    (async () => {
+      try {
+        const res = await getRoom(savedCode);
+        if (savedGuestName) setEmail(savedGuestName);
+        setActiveRoom({
+          code: savedCode,
+          room: res.data.room,
+          messages: res.data.messages,
+        });
+        setScreen("room");
+      } catch {
+        localStorage.removeItem("activeRoomCode");
+        localStorage.removeItem("guestName");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleAuth = (t: string, e: string) => {
     localStorage.setItem("token", t);
     localStorage.setItem("email", e);
@@ -491,6 +521,7 @@ export default function App() {
   };
 
   const handleJoin = (code: string, room: Room, messages: ChatMessage[]) => {
+    localStorage.setItem("activeRoomCode", code);
     setActiveRoom({ code, room, messages });
     setScreen("room");
   };
@@ -498,12 +529,21 @@ export default function App() {
   const handleGuestJoin = async (name: string, code: string) => {
     try {
       const res = await getRoom(code);
+      localStorage.setItem("activeRoomCode", code);
+      localStorage.setItem("guestName", name);
       setEmail(name);
       setActiveRoom({ code, room: res.data.room, messages: res.data.messages });
       setScreen("room");
     } catch {
       toast.error("Room not found");
     }
+  };
+
+  const handleLeave = () => {
+    localStorage.removeItem("activeRoomCode");
+    localStorage.removeItem("guestName");
+    setActiveRoom(null);
+    setScreen(token ? "lobby" : "auth");
   };
 
   return (
@@ -520,7 +560,7 @@ export default function App() {
           initialMessages={activeRoom.messages}
           token={token}
           email={email}
-          onLeave={() => setScreen(token ? "lobby" : "auth")}
+          onLeave={handleLeave}
         />
       )}
     </>
