@@ -28,12 +28,6 @@ type ChatMessage struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-// --- WebSocket event types ---
-//
-// These are the messages that flow over the WebSocket connection, in both
-// directions. EventType distinguishes what kind of event it is; the client
-// and server both switch on this field.
-
 type EventType string
 
 const (
@@ -41,21 +35,19 @@ const (
 	EventPause    EventType = "pause"
 	EventSeek     EventType = "seek"
 	EventChat     EventType = "chat"
-	EventSync     EventType = "sync"     // server -> client only: full current state, sent on join
-	EventPresence EventType = "presence" // server -> client only: who's currently in the room
+	EventSync     EventType = "sync"
+	EventPresence EventType = "presence"
 	EventSetVideo EventType = "set_video"
 )
 
-// ClientEvent is what a connected client sends to the server.
 type ClientEvent struct {
 	Type            EventType `json:"type"`
-	PositionSeconds float64   `json:"position_seconds,omitempty"` // for seek/play
-	VideoURL        string    `json:"video_url,omitempty"`        // for set_video
-	ChatBody        string    `json:"chat_body,omitempty"`        // for chat
-	ClientID        string    `json:"client_id,omitempty"`        // set by server before broadcast, ignored if sent by client
+	PositionSeconds float64   `json:"position_seconds,omitempty"`
+	VideoURL        string    `json:"video_url,omitempty"`
+	ChatBody        string    `json:"chat_body,omitempty"`
+	ClientID        string    `json:"client_id,omitempty"`
 }
 
-// ServerEvent is what the server broadcasts to every client in a room.
 type ServerEvent struct {
 	Type            EventType `json:"type"`
 	PositionSeconds float64   `json:"position_seconds,omitempty"`
@@ -64,12 +56,11 @@ type ServerEvent struct {
 	LastUpdatedAt   time.Time `json:"last_updated_at,omitempty"`
 	SenderName      string    `json:"sender_name,omitempty"`
 	ChatBody        string    `json:"chat_body,omitempty"`
-	OriginClientID  string    `json:"origin_client_id,omitempty"` // lets the originating client ignore its own echo
-	YourClientID    string    `json:"your_client_id,omitempty"`   // sent once, point-to-point, on the join snapshot only — tells a client its own server-assigned ID
-	Members         []string  `json:"members,omitempty"`          // for presence events
+	OriginClientID  string    `json:"origin_client_id,omitempty"`
+	YourClientID    string    `json:"your_client_id,omitempty"`
+	Members         []string  `json:"members,omitempty"`
 }
 
-// Sentinel errors
 var (
 	ErrNotFound      = fmt.Errorf("not found")
 	ErrUnauthorized  = fmt.Errorf("unauthorized")

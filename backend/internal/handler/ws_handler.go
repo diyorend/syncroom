@@ -19,7 +19,6 @@ import (
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		// Production: restrict to your domain.
 		return true
 	},
 }
@@ -34,15 +33,9 @@ func NewWSHandler(manager *room.Manager, roomSvc *service.RoomService, chatRepo 
 	return &WSHandler{manager: manager, roomSvc: roomSvc, chatRepo: chatRepo}
 }
 
-// Connect handles GET /ws/:code
-// Query params:
-//   - token=<jwt>   (optional; authenticated users get their email as display name)
-//   - name=<string> (display name for guests; ignored if authenticated)
 func (h *WSHandler) Connect(c echo.Context) error {
 	code := c.Param("code")
 
-	// Determine display name. Authenticated users get their email from JWT
-	// claims; guests supply ?name=. Falls back to "Guest" if neither is set.
 	name := c.QueryParam("name")
 	if claims := middleware.GetClaims(c); claims != nil {
 		name = claims.Email
@@ -51,8 +44,6 @@ func (h *WSHandler) Connect(c echo.Context) error {
 		name = "Guest"
 	}
 
-	// Look up the room record in Postgres to verify it exists and get its UUID.
-	// GetOrCreate below uses this UUID as the in-memory Room's identifier.
 	dbRoom, err := h.roomSvc.GetByCode(c.Request().Context(), code)
 	if err != nil {
 		if errors.Is(err, domain.ErrRoomNotFound) {
@@ -61,20 +52,14 @@ func (h *WSHandler) Connect(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to find room"})
 	}
 
-	// Upgrade to WebSocket. After this point we cannot write a normal HTTP
-	// response — the connection is a WebSocket. The upgrader handles the
-	// 101 Switching Protocols response internally.
 	conn, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {
 		slog.Error("ws upgrade failed", "room", code, "err", err)
 		return nil
 	}
 
-	r := h.manager.GetOrCreate(c.Request().Context(), code, dbRoom.ID)
+	r := h.manager.GetOrCreate(c.Request().Context(), code, dbRoom.ID, dbRoom.VideoURL)
 
-	// clientID is assigned server-side so it cannot be spoofed by the
-	// client. It's used for self-echo prevention: when a broadcast is sent,
-	// OriginClientID tells each recipient whether it triggered this event.
 	clientID := generateClientID()
 
 	h.manager.Join(r, clientID, name, conn)
@@ -95,11 +80,8 @@ func (h *WSHandler) Connect(c echo.Context) error {
 			continue
 		}
 
-		// Always override client_id with the server-assigned value.
 		ev.ClientID = clientID
 
-		// Persist chat to Postgres asynchronously — room playback events
-		// (play/pause/seek) are ephemeral and intentionally not persisted.
 		if ev.Type == domain.EventChat && ev.ChatBody != "" {
 			go func(body string) {
 				ctx := c.Request().Context()
@@ -109,8 +91,6 @@ func (h *WSHandler) Connect(c echo.Context) error {
 			}(ev.ChatBody)
 		}
 
-		// Persist video URL change so new joiners get it from the REST
-		// endpoint even after the original setter has left the room.
 		if ev.Type == domain.EventSetVideo && ev.VideoURL != "" {
 			go func(url string) {
 				ctx := c.Request().Context()
@@ -126,9 +106,6 @@ func (h *WSHandler) Connect(c echo.Context) error {
 	return nil
 }
 
-// generateClientID returns a short cryptographically-random hex string.
-// Only needs to be unique within a single room session; does not need to
-// be a full UUID.
 func generateClientID() string {
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {

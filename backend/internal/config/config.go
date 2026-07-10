@@ -9,13 +9,11 @@ import (
 )
 
 type Config struct {
-	Port           string
-	DatabaseURL    string
-	RedisURL       string
-	JWTSecret      string
-	JWTExpiryHours int
-	// RoomIdleTimeoutMinutes controls how long a room with zero connected
-	// clients stays in memory before the cleanup sweep removes it.
+	Port                   string
+	DatabaseURL            string
+	RedisURL               string
+	JWTSecret              string
+	JWTExpiryHours         int
 	RoomIdleTimeoutMinutes int
 }
 

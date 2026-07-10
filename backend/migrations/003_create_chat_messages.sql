@@ -1,7 +1,7 @@
 CREATE TABLE chat_messages (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     room_id     UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-    sender_name TEXT NOT NULL,            -- display name, not a user_id — guests can chat without an account
+    sender_name TEXT NOT NULL,
     body        TEXT NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

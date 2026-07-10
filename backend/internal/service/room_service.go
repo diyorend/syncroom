@@ -19,9 +19,6 @@ func NewRoomService(roomStore repository.RoomStore) *RoomService {
 	return &RoomService{roomStore: roomStore}
 }
 
-// Create generates a unique short code and persists the room.
-// The in-memory Room struct is created by the Manager (room package)
-// on first WebSocket connection — the DB record is created here.
 func (s *RoomService) Create(ctx context.Context, creatorID string) (*domain.Room, error) {
 	code, err := generateCode()
 	if err != nil {
@@ -42,11 +39,6 @@ func (s *RoomService) UpdateVideoURL(ctx context.Context, roomID, videoURL strin
 	return s.roomStore.UpdateVideoURL(ctx, roomID, videoURL)
 }
 
-// generateCode produces a human-readable room code like "BLUE-FOX-42".
-// Using crypto/rand (not math/rand) so codes are not predictable — a
-// guessable room code means anyone can join any room without being
-// invited, which is the main "security" property this application
-// actually cares about.
 var (
 	adjectives = []string{"BLUE", "RED", "FAST", "CALM", "DARK", "BRIGHT", "WILD", "COOL", "KEEN", "BOLD"}
 	nouns      = []string{"FOX", "OWL", "CAT", "WOLF", "BEAR", "HAWK", "LION", "LYNX", "CROW", "SWAN"}

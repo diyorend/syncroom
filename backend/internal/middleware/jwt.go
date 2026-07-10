@@ -10,9 +10,6 @@ import (
 
 const claimsKey = "user_claims"
 
-// JWT validates the token from the Authorization header (REST calls) or
-// the ?token= query param (WebSocket upgrade requests, where the browser's
-// WebSocket API cannot set custom headers).
 func JWT(authSvc *service.AuthService) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -54,10 +51,6 @@ func RequireAuth(c echo.Context) (string, error) {
 	return claims.UserID, nil
 }
 
-// OptionalJWT is like JWT but does not reject requests with no token.
-// If a valid token is present it sets the claims; if not, the handler
-// proceeds with no claims (GetClaims returns nil). Used for the WebSocket
-// endpoint where guests can join without an account.
 func OptionalJWT(authSvc *service.AuthService) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {

@@ -42,8 +42,6 @@ func (h *RoomHandler) Get(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get room"})
 	}
 
-	// Fetch recent chat history so the page can show it on load without
-	// waiting for subsequent WebSocket messages.
 	msgs, err := h.chatRepo.ListByRoom(c.Request().Context(), room.ID, 50)
 	if err != nil {
 		msgs = []*domain.ChatMessage{}

@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { ServerEvent, ClientEvent, ChatMessage } from "../api/client";
 
-// YouTube IFrame API types — the API loads globally via the script tag in
-// index.html and attaches to window.YT. TypeScript doesn't know about it
-// by default, so we declare the shape we actually use.
 declare global {
   interface Window {
     YT: {
@@ -47,8 +44,6 @@ interface StartState {
   playing: boolean;
 }
 
-// extractYouTubeID pulls the video ID from a full YouTube URL or returns
-// the string as-is if it's already just an ID (11 characters).
 function extractYouTubeID(url: string): string {
   try {
     const u = new URL(url);
@@ -75,44 +70,25 @@ export function useRoom(
 
   const ws = useRef<WebSocket | null>(null);
   const player = useRef<YTPlayer | null>(null);
-  // clientID is assigned by the server and echoed back in OriginClientID.
-  // We track the most recent one we've seen our own events return as, so
-  // we can implement self-echo prevention.
+
   const myClientID = useRef<string>("");
-  // suppressUntil: a timestamp, not a single-use flag. Programmatic
-  // seekTo()+playVideo()/pauseVideo() can each independently trigger
-  // onStateChange (e.g. BUFFERING then PLAYING), so a one-shot boolean
-  // only swallows the first of those and treats the second as a real
-  // user action — which re-broadcasts a fake play/pause and causes a
-  // feedback loop between clients. A short time window covers the
-  // whole sequence regardless of how many callbacks the player fires.
+
   const suppressUntil = useRef(0);
   const playerReady = useRef(false);
-  // videoUrlRef tracks the video URL the *player* currently reflects. This
-  // must be a ref, not React state read inside the WS onmessage closure —
-  // that closure is captured once when the effect mounts (deps: [roomCode])
-  // and would otherwise always compare against the stale initial value,
-  // making every subsequent play/pause/seek event look like a "new video"
-  // and destroy+recreate the player on every single sync message.
+
   const videoUrlRef = useRef("");
-  // Queues a pending player creation if the YouTube IFrame API script
-  // hasn't finished loading yet by the time we need it.
+
   const pendingInit = useRef<{
     videoId: string;
     startState?: StartState;
   } | null>(null);
 
-  // send is stable across renders — it sends a ClientEvent over the WS.
   const send = useCallback((ev: ClientEvent) => {
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify(ev));
     }
   }, []);
 
-  // initPlayer creates a YouTube IFrame player inside the #yt-player div.
-  // startState (if given) is applied once the new player reports ready —
-  // seeking/playing a player that doesn't exist yet is a no-op, so we can't
-  // just call applySync() right after construction.
   const initPlayer = useCallback(
     (videoId: string, startState?: StartState) => {
       if (player.current) {
@@ -153,8 +129,6 @@ export function useRoom(
     [send],
   );
 
-  // ensurePlayer creates the player now if the YouTube API is ready, or
-  // queues the request to run once it finishes loading.
   const ensurePlayer = useCallback(
     (videoId: string, startState?: StartState) => {
       if (window.YT?.Player) {
@@ -175,8 +149,6 @@ export function useRoom(
     [initPlayer],
   );
 
-  // applySync applies a server sync event to the local player, computing
-  // the live position from the snapshot-plus-elapsed-time pattern.
   const applySync = useCallback((ev: ServerEvent) => {
     if (!player.current || !playerReady.current) return;
 
@@ -187,15 +159,9 @@ export function useRoom(
       pos += elapsed;
     }
 
-    // Only hard-seek if we're actually off by enough to matter. Every
-    // sync message forcing a seekTo was causing constant rebuffering,
-    // which is itself a source of spurious onStateChange callbacks.
     const current = player.current.getCurrentTime();
     const drift = Math.abs(current - pos);
 
-    // Cover the whole callback sequence this call can trigger (seek can
-    // emit BUFFERING, playVideo/pauseVideo can emit PLAYING/PAUSED —
-    // sometimes both, sometimes one), not just the next single event.
     suppressUntil.current = Date.now() + 1200;
 
     if (drift > 1.5) {
@@ -208,7 +174,7 @@ export function useRoom(
       player.current.pauseVideo();
     }
   }, []);
-  // WebSocket lifecycle
+
   useEffect(() => {
     videoUrlRef.current = "";
     playerReady.current = false;
@@ -239,13 +205,6 @@ export function useRoom(
 
       switch (ev.type) {
         case "sync": {
-          // your_client_id is sent exactly once, on the join snapshot — it's
-          // the server telling us our own ID directly. Do NOT infer this
-          // from origin_client_id on ordinary sync broadcasts; every other
-          // client's broadcast has an origin_client_id too, and copying it
-          // in here on every message made isSelfEcho trivially true forever
-          // (comparing a value to the value you just assigned it), which is
-          // why play/pause from other clients was silently ignored.
           if (ev.your_client_id) myClientID.current = ev.your_client_id;
           const isSelfEcho =
             !!ev.origin_client_id && ev.origin_client_id === myClientID.current;
@@ -261,10 +220,6 @@ export function useRoom(
           if (videoChanged) videoUrlRef.current = ev.video_url;
 
           if (videoChanged) {
-            // (Re)create the player for every client, including whoever set
-            // the video — this is the one and only place the player gets
-            // created, so there's no race between a locally-fired init and
-            // the server echo arriving with the authoritative state.
             let pos = ev.position_seconds;
             if (ev.is_playing) {
               pos +=
@@ -277,8 +232,6 @@ export function useRoom(
             break;
           }
 
-          // Same video — just a play/pause/seek update. Skip re-applying
-          // our own action (avoids a feedback loop); apply everyone else's.
           if (!isSelfEcho) applySync(ev);
           break;
         }
@@ -310,12 +263,10 @@ export function useRoom(
       player.current?.destroy();
       player.current = null;
     };
-  }, [roomCode]); // only re-run if room code changes — not on every render
+  }, [roomCode]);
 
   const sendSetVideo = useCallback(
     (url: string) => {
-      // Just send it — the player is (re)created uniformly for every client,
-      // including us, when the server echoes the resulting sync event back.
       send({ type: "set_video", video_url: url });
     },
     [send],

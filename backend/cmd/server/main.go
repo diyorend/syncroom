@@ -114,6 +114,7 @@ func main() {
 	defer bgCancel()
 
 	go manager.StartIdleSweeper(bgCtx, 2*time.Minute)
+	go manager.StartCrossInstanceSync(bgCtx)
 
 	// --- Start server ---
 	go func() {
