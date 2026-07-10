@@ -79,10 +79,6 @@ export function useRoom(
   // We track the most recent one we've seen our own events return as, so
   // we can implement self-echo prevention.
   const myClientID = useRef<string>("");
-  // ignoreNextStateChange: true when we programmatically control the player
-  // (from a sync event) so the player's own stateChange callback doesn't
-  // re-emit another event back to the room. This prevents the ping-pong loop.
-  const ignoreNextStateChange = useRef(false);
   // suppressUntil: a timestamp, not a single-use flag. Programmatic
   // seekTo()+playVideo()/pauseVideo() can each independently trigger
   // onStateChange (e.g. BUFFERING then PLAYING), so a one-shot boolean
@@ -131,30 +127,17 @@ export function useRoom(
           onReady: () => {
             playerReady.current = true;
             if (startState) {
-              // A freshly-created player already starts paused at position 0 —
-              // that's the default. Forcing a seekTo() when there's nothing to
-              // catch up to makes the player re-buffer for no reason, which is
-              // what causes a visible flash/black-out right after loading. Only
-              // act when there's a real position to catch up to or playback
-              // needs to actually start.
+              suppressUntil.current = Date.now() + 1200;
               if (startState.pos > 1) {
-                ignoreNextStateChange.current = true;
                 player.current?.seekTo(startState.pos, true);
               }
               if (startState.playing) {
-                ignoreNextStateChange.current = true;
                 player.current?.playVideo();
               }
             }
           },
           onStateChange: (event) => {
-            if (
-              ignoreNextStateChange.current ||
-              Date.now() < suppressUntil.current
-            ) {
-              ignoreNextStateChange.current = false;
-              return;
-            }
+            if (Date.now() < suppressUntil.current) return;
             const YT = window.YT.PlayerState;
             const pos = player.current?.getCurrentTime() ?? 0;
 
