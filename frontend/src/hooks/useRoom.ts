@@ -234,10 +234,16 @@ export function useRoom(
 
       switch (ev.type) {
         case "sync": {
-          // Track the origin_client_id we get back from our own events so
-          // we know what our own ID is.
-          if (ev.origin_client_id) myClientID.current = ev.origin_client_id;
-          const isSelfEcho = ev.origin_client_id === myClientID.current;
+          // your_client_id is sent exactly once, on the join snapshot — it's
+          // the server telling us our own ID directly. Do NOT infer this
+          // from origin_client_id on ordinary sync broadcasts; every other
+          // client's broadcast has an origin_client_id too, and copying it
+          // in here on every message made isSelfEcho trivially true forever
+          // (comparing a value to the value you just assigned it), which is
+          // why play/pause from other clients was silently ignored.
+          if (ev.your_client_id) myClientID.current = ev.your_client_id;
+          const isSelfEcho =
+            !!ev.origin_client_id && ev.origin_client_id === myClientID.current;
 
           setState((s) => ({
             ...s,

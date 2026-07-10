@@ -316,8 +316,15 @@ func (m *Manager) Join(r *Room, clientID, name string, conn *websocket.Conn) {
 	r.touch()
 
 	// Send the joining client its catch-up snapshot directly (not via the
-	// event loop — this is a point-to-point send, not a broadcast).
-	if err := sc.writeJSON(r.snapshot()); err != nil {
+	// event loop — this is a point-to-point send, not a broadcast). We also
+	// stamp YourClientID here: this is the ONLY message where a client
+	// learns its own server-assigned ID. It must never be inferred from a
+	// broadcast's OriginClientID (a client can't distinguish "this is an
+	// echo of my own action" from "this is someone else's action" without
+	// already knowing its own ID first).
+	snap := r.snapshot()
+	snap.YourClientID = clientID
+	if err := sc.writeJSON(snap); err != nil {
 		slog.Error("failed to send snapshot to joining client", "room", r.Code, "err", err)
 	}
 

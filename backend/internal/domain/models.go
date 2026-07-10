@@ -65,6 +65,7 @@ type ServerEvent struct {
 	SenderName      string    `json:"sender_name,omitempty"`
 	ChatBody        string    `json:"chat_body,omitempty"`
 	OriginClientID  string    `json:"origin_client_id,omitempty"` // lets the originating client ignore its own echo
+	YourClientID    string    `json:"your_client_id,omitempty"`   // sent once, point-to-point, on the join snapshot only — tells a client its own server-assigned ID
 	Members         []string  `json:"members,omitempty"`          // for presence events
 }
 
