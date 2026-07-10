@@ -123,12 +123,19 @@ export function useRoom(
           onReady: () => {
             playerReady.current = true;
             if (startState) {
-              ignoreNextStateChange.current = true;
-              player.current?.seekTo(startState.pos, true);
+              // A freshly-created player already starts paused at position 0 —
+              // that's the default. Forcing a seekTo() when there's nothing to
+              // catch up to makes the player re-buffer for no reason, which is
+              // what causes a visible flash/black-out right after loading. Only
+              // act when there's a real position to catch up to or playback
+              // needs to actually start.
+              if (startState.pos > 1) {
+                ignoreNextStateChange.current = true;
+                player.current?.seekTo(startState.pos, true);
+              }
               if (startState.playing) {
+                ignoreNextStateChange.current = true;
                 player.current?.playVideo();
-              } else {
-                player.current?.pauseVideo();
               }
             }
           },
