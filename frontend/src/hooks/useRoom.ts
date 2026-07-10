@@ -83,6 +83,14 @@ export function useRoom(
   // (from a sync event) so the player's own stateChange callback doesn't
   // re-emit another event back to the room. This prevents the ping-pong loop.
   const ignoreNextStateChange = useRef(false);
+  // suppressUntil: a timestamp, not a single-use flag. Programmatic
+  // seekTo()+playVideo()/pauseVideo() can each independently trigger
+  // onStateChange (e.g. BUFFERING then PLAYING), so a one-shot boolean
+  // only swallows the first of those and treats the second as a real
+  // user action — which re-broadcasts a fake play/pause and causes a
+  // feedback loop between clients. A short time window covers the
+  // whole sequence regardless of how many callbacks the player fires.
+  const suppressUntil = useRef(0);
   const playerReady = useRef(false);
   // videoUrlRef tracks the video URL the *player* currently reflects. This
   // must be a ref, not React state read inside the WS onmessage closure —
@@ -140,7 +148,10 @@ export function useRoom(
             }
           },
           onStateChange: (event) => {
-            if (ignoreNextStateChange.current) {
+            if (
+              ignoreNextStateChange.current ||
+              Date.now() < suppressUntil.current
+            ) {
               ignoreNextStateChange.current = false;
               return;
             }
@@ -193,8 +204,20 @@ export function useRoom(
       pos += elapsed;
     }
 
-    ignoreNextStateChange.current = true;
-    player.current.seekTo(pos, true);
+    // Only hard-seek if we're actually off by enough to matter. Every
+    // sync message forcing a seekTo was causing constant rebuffering,
+    // which is itself a source of spurious onStateChange callbacks.
+    const current = player.current.getCurrentTime();
+    const drift = Math.abs(current - pos);
+
+    // Cover the whole callback sequence this call can trigger (seek can
+    // emit BUFFERING, playVideo/pauseVideo can emit PLAYING/PAUSED —
+    // sometimes both, sometimes one), not just the next single event.
+    suppressUntil.current = Date.now() + 1200;
+
+    if (drift > 1.5) {
+      player.current.seekTo(pos, true);
+    }
 
     if (ev.is_playing) {
       player.current.playVideo();
@@ -202,7 +225,6 @@ export function useRoom(
       player.current.pauseVideo();
     }
   }, []);
-
   // WebSocket lifecycle
   useEffect(() => {
     videoUrlRef.current = "";
