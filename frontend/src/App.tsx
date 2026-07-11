@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Toaster, toast } from "react-hot-toast";
+import "./App.css";
 import { login, register, createRoom, getRoom } from "./api/client";
 import type { Room, ChatMessage } from "./api/client";
 import { useRoom } from "./hooks/useRoom";
@@ -92,15 +93,7 @@ function AuthScreen({
   };
 
   return (
-    <div
-      style={{
-        maxWidth: 400,
-        margin: "80px auto",
-        display: "flex",
-        flexDirection: "column",
-        gap: 16,
-      }}
-    >
+    <div className="sr-auth-container">
       <div style={s.card}>
         <h2 style={{ marginTop: 0 }}>SyncRoom</h2>
         <p style={{ color: "#6b7280", marginBottom: 20 }}>
@@ -210,15 +203,8 @@ function LobbyScreen({
   };
 
   return (
-    <div style={{ maxWidth: 500, margin: "80px auto" }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 24,
-        }}
-      >
+    <div className="sr-lobby-container">
+      <div className="sr-lobby-header">
         <h2 style={{ margin: 0 }}>SyncRoom</h2>
         <span style={{ color: "#6b7280", fontSize: 13 }}>{email}</span>
       </div>
@@ -288,7 +274,7 @@ function ChatPanel({
         ))}
         <div ref={bottomRef} />
       </div>
-      <div style={{ display: "flex", gap: 8 }}>
+      <div className="sr-chat-input-row">
         <input
           style={{ ...s.input, marginBottom: 0, flex: 1 }}
           placeholder="Message..."
@@ -342,16 +328,9 @@ function RoomScreen({
   );
 
   return (
-    <div style={s.page}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 16,
-        }}
-      >
-        <div>
+    <div className="sr-page">
+      <div className="sr-room-header">
+        <div className="sr-room-header-info">
           <strong>Room: {roomCode}</strong>
           <span style={{ marginLeft: 12, ...s.tag }}>
             {state.isConnected ? "● Connected" : "○ Connecting..."}
@@ -362,14 +341,7 @@ function RoomScreen({
         </button>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 320px",
-          gap: 16,
-          height: 540,
-        }}
-      >
+      <div className="sr-room-grid">
         {/* Video panel */}
         <div style={{ display: "flex", flexDirection: "column" }}>
           {/* YouTube IFrame Player — this outer box is always visible and
@@ -404,7 +376,7 @@ function RoomScreen({
               </div>
             )}
           </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <div className="sr-video-controls-row">
             <input
               style={{ ...s.input, marginBottom: 0, flex: 1 }}
               placeholder="YouTube URL (e.g. https://youtube.com/watch?v=...)"
@@ -422,14 +394,7 @@ function RoomScreen({
         </div>
 
         {/* Sidebar: presence + chat */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-            height: "100%",
-          }}
-        >
+        <div className="sr-sidebar">
           <div style={s.card}>
             <strong style={{ fontSize: 13 }}>In this room</strong>
             <div style={{ marginTop: 8 }}>
@@ -446,15 +411,7 @@ function RoomScreen({
               )}
             </div>
           </div>
-          <div
-            style={{
-              ...s.card,
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              overflow: "hidden",
-            }}
-          >
+          <div className="sr-chat-card" style={s.card}>
             <strong style={{ fontSize: 13, marginBottom: 8, display: "block" }}>
               Chat
             </strong>

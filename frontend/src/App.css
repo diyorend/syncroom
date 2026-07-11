@@ -1,0 +1,165 @@
+/* ---- Responsive layout rules ----
+   These work alongside the existing inline styles in App.tsx.
+   Base (desktop-first) values match the previous inline defaults;
+   media queries below adapt spacing/layout for tablet & mobile. */
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+    width: 100%;
+    overflow-x: hidden;
+}
+
+.sr-page {
+    font-family: system-ui, sans-serif;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 24px;
+    color: #111;
+}
+
+.sr-auth-container {
+    max-width: 400px;
+    margin: 80px auto;
+    padding: 0 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.sr-lobby-container {
+    max-width: 500px;
+    margin: 80px auto;
+    padding: 0 16px;
+}
+
+.sr-lobby-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.sr-room-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.sr-room-header-info {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.sr-room-grid {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 16px;
+    height: 540px;
+}
+
+.sr-video-controls-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.sr-chat-input-row {
+    display: flex;
+    gap: 8px;
+}
+
+.sr-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    height: 100%;
+    min-height: 0;
+}
+
+.sr-chat-card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 240px;
+}
+
+/* ---- Tablet & below ---- */
+@media (max-width: 768px) {
+    .sr-page {
+        padding: 16px;
+    }
+
+    .sr-auth-container,
+    .sr-lobby-container {
+        margin: 40px auto;
+    }
+
+    .sr-room-grid {
+        grid-template-columns: 1fr;
+        height: auto;
+    }
+
+    .sr-sidebar {
+        height: auto;
+    }
+
+    .sr-chat-card {
+        height: 420px;
+        flex: none;
+    }
+}
+
+/* ---- Mobile ---- */
+@media (max-width: 480px) {
+    .sr-page {
+        padding: 12px;
+    }
+
+    .sr-auth-container,
+    .sr-lobby-container {
+        margin: 24px auto;
+        padding: 0 8px;
+    }
+
+    .sr-lobby-header h2,
+    .sr-room-header strong {
+        font-size: 18px;
+    }
+
+    .sr-video-controls-row {
+        flex-direction: column;
+    }
+
+    .sr-video-controls-row button {
+        width: 100%;
+    }
+
+    .sr-chat-input-row {
+        flex-wrap: wrap;
+    }
+
+    .sr-chat-input-row input {
+        flex: 1 1 100%;
+    }
+
+    .sr-chat-input-row button {
+        flex: 1 1 100%;
+    }
+
+    .sr-chat-card {
+        height: 340px;
+    }
+}
