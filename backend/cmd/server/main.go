@@ -65,6 +65,15 @@ func main() {
 	idleTimeout := time.Duration(cfg.RoomIdleTimeoutMinutes) * time.Minute
 	manager := room.NewManager(rdb, idleTimeout)
 
+	// Long-lived context for server-lifetime background work: the idle
+	// sweeper, the cross-instance Redis sync subscriber, and each room's
+	// own event loop (Room.Run). This must be independent of any single
+	// client's HTTP/WebSocket request context — a room is shared by many
+	// clients, so its lifetime can't be tied to whichever one of them
+	// happens to disconnect first (e.g. the host refreshing their page).
+	bgCtx, bgCancel := context.WithCancel(ctx)
+	defer bgCancel()
+
 	// --- Services ---
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.JWTExpiryHours)
 	roomSvc := service.NewRoomService(roomRepo)
@@ -72,7 +81,7 @@ func main() {
 	// --- Handlers ---
 	authHandler := handler.NewAuthHandler(authSvc)
 	roomHandler := handler.NewRoomHandler(roomSvc, chatRepo)
-	wsHandler := handler.NewWSHandler(manager, roomSvc, chatRepo)
+	wsHandler := handler.NewWSHandler(bgCtx, manager, roomSvc, chatRepo)
 
 	// --- Echo router ---
 	e := echo.New()
@@ -110,9 +119,6 @@ func main() {
 	e.GET("/ws/:code", wsHandler.Connect, middleware.OptionalJWT(authSvc))
 
 	// --- Background goroutines ---
-	bgCtx, bgCancel := context.WithCancel(ctx)
-	defer bgCancel()
-
 	go manager.StartIdleSweeper(bgCtx, 2*time.Minute)
 	go manager.StartCrossInstanceSync(bgCtx)
 

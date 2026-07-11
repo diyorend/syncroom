@@ -7,7 +7,7 @@ import (
 )
 
 func ExportNewRoom(id, code string) *Room {
-	return newRoom(id, code, "", nil)
+	return newRoom(id, code, "", nil, "test-instance")
 }
 
 func (r *Room) ExportSetState(positionSeconds float64, isPlaying bool, lastUpdatedAt time.Time) {

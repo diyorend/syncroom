@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
@@ -27,10 +28,17 @@ type WSHandler struct {
 	manager  *room.Manager
 	roomSvc  *service.RoomService
 	chatRepo repository.ChatStore
+	// ctx is a long-lived, server-lifetime context used to run each room's
+	// event loop. It must NOT be a per-connection request context: rooms
+	// are shared by many clients, and the goroutine that drives a room's
+	// sync/chat/broadcast logic (Room.Run) must keep running for as long
+	// as the room exists, regardless of which individual client's
+	// WebSocket connection happens to close (e.g. on refresh).
+	ctx context.Context
 }
 
-func NewWSHandler(manager *room.Manager, roomSvc *service.RoomService, chatRepo repository.ChatStore) *WSHandler {
-	return &WSHandler{manager: manager, roomSvc: roomSvc, chatRepo: chatRepo}
+func NewWSHandler(ctx context.Context, manager *room.Manager, roomSvc *service.RoomService, chatRepo repository.ChatStore) *WSHandler {
+	return &WSHandler{ctx: ctx, manager: manager, roomSvc: roomSvc, chatRepo: chatRepo}
 }
 
 func (h *WSHandler) Connect(c echo.Context) error {
@@ -58,7 +66,7 @@ func (h *WSHandler) Connect(c echo.Context) error {
 		return nil
 	}
 
-	r := h.manager.GetOrCreate(c.Request().Context(), code, dbRoom.ID, dbRoom.VideoURL)
+	r := h.manager.GetOrCreate(h.ctx, code, dbRoom.ID, dbRoom.VideoURL)
 
 	clientID := generateClientID()
 

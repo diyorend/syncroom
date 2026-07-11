@@ -2,6 +2,8 @@ package room
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"sync"
@@ -45,8 +47,9 @@ func crossInstanceChannel(code string) string {
 }
 
 type pubSubEnvelope struct {
-	Code  string             `json:"code"`
-	Event domain.ServerEvent `json:"event"`
+	Code       string             `json:"code"`
+	Event      domain.ServerEvent `json:"event"`
+	InstanceID string             `json:"instance_id"`
 }
 
 type Room struct {
@@ -60,6 +63,8 @@ type Room struct {
 
 	rdb *redis.Client
 
+	instanceID string
+
 	events     chan roomEvent
 	remote     chan domain.ServerEvent
 	done       chan struct{}
@@ -72,15 +77,16 @@ type roomEvent struct {
 	event    domain.ClientEvent
 }
 
-func newRoom(id, code, initialVideoURL string, rdb *redis.Client) *Room {
+func newRoom(id, code, initialVideoURL string, rdb *redis.Client, instanceID string) *Room {
 	return &Room{
-		ID:      id,
-		Code:    code,
-		clients: make(map[string]*client),
-		rdb:     rdb,
-		events:  make(chan roomEvent, 64),
-		remote:  make(chan domain.ServerEvent, 64),
-		done:    make(chan struct{}),
+		ID:         id,
+		Code:       code,
+		clients:    make(map[string]*client),
+		rdb:        rdb,
+		instanceID: instanceID,
+		events:     make(chan roomEvent, 64),
+		remote:     make(chan domain.ServerEvent, 64),
+		done:       make(chan struct{}),
 		state: playbackState{
 			VideoURL:      initialVideoURL,
 			LastUpdatedAt: time.Now(),
@@ -210,7 +216,7 @@ func (r *Room) publishRemote(ev domain.ServerEvent) {
 	if r.rdb == nil {
 		return
 	}
-	data, err := json.Marshal(pubSubEnvelope{Code: r.Code, Event: ev})
+	data, err := json.Marshal(pubSubEnvelope{Code: r.Code, Event: ev, InstanceID: r.instanceID})
 	if err != nil {
 		slog.Error("failed to marshal cross-instance event", "room", r.Code, "err", err)
 		return
@@ -266,6 +272,8 @@ type Manager struct {
 
 	rdb *redis.Client
 
+	instanceID string
+
 	idleTimeout time.Duration
 }
 
@@ -273,8 +281,17 @@ func NewManager(rdb *redis.Client, idleTimeout time.Duration) *Manager {
 	return &Manager{
 		rooms:       make(map[string]*Room),
 		rdb:         rdb,
+		instanceID:  generateInstanceID(),
 		idleTimeout: idleTimeout,
 	}
+}
+
+func generateInstanceID() string {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		return "instance-fallback"
+	}
+	return hex.EncodeToString(b)
 }
 
 func (m *Manager) GetOrCreate(ctx context.Context, code, dbID, initialVideoURL string) *Room {
@@ -285,7 +302,7 @@ func (m *Manager) GetOrCreate(ctx context.Context, code, dbID, initialVideoURL s
 		return r
 	}
 
-	r := newRoom(dbID, code, initialVideoURL, m.rdb)
+	r := newRoom(dbID, code, initialVideoURL, m.rdb, m.instanceID)
 	m.rooms[code] = r
 	go r.Run(ctx)
 	slog.Info("room created in memory", "code", code)
@@ -375,6 +392,12 @@ func (m *Manager) StartCrossInstanceSync(ctx context.Context) {
 			var envelope pubSubEnvelope
 			if err := json.Unmarshal([]byte(msg.Payload), &envelope); err != nil {
 				slog.Warn("bad cross-instance payload", "err", err)
+				continue
+			}
+			if envelope.InstanceID != "" && envelope.InstanceID == m.instanceID {
+				// This instance already broadcast the event locally before
+				// publishing it, so applying our own echo back would send
+				// it to local clients a second time.
 				continue
 			}
 			m.mu.RLock()
