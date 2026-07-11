@@ -31,12 +31,20 @@ func NewAuthService(store repository.UserStore, secret string, expiryHours int) 
 	}
 }
 
-func (s *AuthService) Register(ctx context.Context, email, password string) (*domain.User, error) {
+func (s *AuthService) Register(ctx context.Context, email, password string) (string, *domain.User, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, fmt.Errorf("AuthService.Register: %w", err)
+		return "", nil, fmt.Errorf("AuthService.Register: %w", err)
 	}
-	return s.userStore.Create(ctx, email, string(hash))
+	user, err := s.userStore.Create(ctx, email, string(hash))
+	if err != nil {
+		return "", nil, err
+	}
+	token, err := s.generateToken(user)
+	if err != nil {
+		return "", nil, err
+	}
+	return token, user, nil
 }
 
 func (s *AuthService) Login(ctx context.Context, email, password string) (string, *domain.User, error) {

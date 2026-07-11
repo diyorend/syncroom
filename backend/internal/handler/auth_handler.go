@@ -30,14 +30,14 @@ func (h *AuthHandler) Register(c echo.Context) error {
 	if req.Email == "" || len(req.Password) < 8 {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "email required, password min 8 chars"})
 	}
-	user, err := h.authSvc.Register(c.Request().Context(), req.Email, req.Password)
+	token, user, err := h.authSvc.Register(c.Request().Context(), req.Email, req.Password)
 	if err != nil {
 		if errors.Is(err, domain.ErrAlreadyExists) {
 			return c.JSON(http.StatusConflict, map[string]string{"error": "email already registered"})
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "registration failed"})
 	}
-	return c.JSON(http.StatusCreated, user)
+	return c.JSON(http.StatusCreated, map[string]any{"token": token, "user": user})
 }
 
 func (h *AuthHandler) Login(c echo.Context) error {
